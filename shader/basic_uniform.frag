@@ -17,7 +17,6 @@ layout (binding = 4) uniform sampler2D BlurTex2;
 
 // Output
 layout (location = 0) out vec4 FragColor;
-layout (location = 1) out vec4 HdrColor;
 
 // Pass Index/Num
 uniform int Pass;
@@ -47,7 +46,7 @@ uniform mat3 xyz2rgb = mat3
 uniform float Exposure = 0.35;
 uniform float White = 0.928;
 uniform float AveLum;
-float Gamma = 1/2.2f;
+const float Gamma = 1/2.2f;
 
 // Light Info
 uniform struct LightInfo
@@ -218,6 +217,8 @@ void main()
 
 	else if (Pass == 5) 
 		FragColor = vec4(pow(vec3(pass5()), vec3(1.0/Gamma)), 1.0); // Gamma Correction
+	else
+		FragColor = vec4(1.0);
 }
 
 

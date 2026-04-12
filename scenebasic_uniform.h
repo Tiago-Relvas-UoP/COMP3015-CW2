@@ -19,12 +19,29 @@ class SceneBasic_Uniform : public Scene
 private:
     GLSLProgram prog;
 
+    GLuint fsQuad;
+    GLuint hdrFbo, blurFbo;
+    GLuint hdrTex, tex1, tex2;
+    GLuint baseTex, normalMap;
+    GLuint linearSampler, nearestSampler;
+
     std::unique_ptr<ObjMesh> mesh;
     float tPrev, angle, rotSpeed;
+    int bloomBufWidth, bloomBufHeight;
 
     void compile();
     void setMatrices();
     void drawScene();
+
+    void setupFBO();
+    void pass1();
+    void pass2();
+    void pass3();
+    void pass4();
+    void pass5();
+
+    float gauss(float, float);
+    void computeLogAveLuminance();
 
 public:
     SceneBasic_Uniform();
