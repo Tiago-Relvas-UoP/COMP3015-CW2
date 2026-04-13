@@ -19,12 +19,25 @@ class SceneBasic_Uniform : public Scene
 private:
     GLSLProgram prog;
 
+    GLuint fsQuad;
+    GLuint renderFBO, intermediateFBO;
+    GLuint renderTex, intermediateTex;
+
     std::unique_ptr<ObjMesh> mesh;
     float tPrev, angle, rotSpeed;
+    bool blurEnabled; 
+	float timeSincePress;
 
     void compile();
     void setMatrices();
+
+    void setupFBO();
+    void pass1();
+    void pass2();
+    void pass3();
+
     void drawScene();
+    float gauss(float, float);
 
 public:
     SceneBasic_Uniform();
