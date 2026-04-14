@@ -35,6 +35,10 @@ uniform struct FogInfo
 	vec3 Color;
 }Fog;
 
+// Toon Shading Levels/ScaleFactor
+const int levels = 3;
+const float scaleFactor = 1.0/levels;
+
 vec3 blinnPhong(int light, vec3 n)
 {
 	// Texture
@@ -47,7 +51,8 @@ vec3 blinnPhong(int light, vec3 n)
 	vec3 s = normalize(LightDir[light]); // Light Direction
 
 	float sDotN = max(dot(s, n), 0.0);
-	diffuse = texColor * sDotN ; // Diffuse
+	diffuse = texColor * floor(sDotN * levels) * scaleFactor ; // Diffuse with Toon Shading.
+	// diffuse = texColor * sDotN ; // Diffuse (Normal)
 
 	if (sDotN > 0.0)
 	{

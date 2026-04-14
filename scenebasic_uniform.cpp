@@ -122,11 +122,11 @@ void SceneBasic_Uniform::initScene()
     // * Light *
     // Light Intensity
     prog.setUniform("Light[0].L", vec3(1.0f, 1.0f, 1.0f));
-    prog.setUniform("Light[1].L", vec3(0.05f, 0.0f, 0.0f));
-    prog.setUniform("Light[2].L", vec3(0.0f, 0.0f, 0.4f));
+    prog.setUniform("Light[1].L", vec3(0.2f, 0.0f, 0.0f));
+    prog.setUniform("Light[2].L", vec3(0.0f, 0.0f, 0.5f));
 
     // Light Ambient
-    prog.setUniform("Light[0].La", vec3(0.2f, 0.2f, 0.2f));
+    prog.setUniform("Light[0].La", vec3(0.6f, 0.6f, 0.6f));
     prog.setUniform("Light[1].La", vec3(0.05f, 0.0f, 0.0f));
     prog.setUniform("Light[2].La", vec3(0.0f, 0.0f, 0.05f));
 
@@ -176,7 +176,7 @@ void SceneBasic_Uniform::initScene()
 
     noiseProg.use();
     noiseProg.setUniform("NoiseTex", 3);
-    noiseProg.setUniform("GlobalAlpha", 0.4f);
+    noiseProg.setUniform("GlobalAlpha", 0.0f);
 
     prog.use();
 
