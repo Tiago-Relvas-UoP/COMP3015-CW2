@@ -13,6 +13,7 @@
 #include "helper/objmesh.h"
 
 #include "helper/skybox.h";
+#include "irrklang.h"
 
 class SceneBasic_Uniform : public Scene
 {
@@ -35,8 +36,15 @@ private:
     bool blurEnabled; 
 	float timeSincePress;
 
+    // Audio
+    irrklang::ISoundEngine* soundEngine;
+    float volume;
+
     void compile();
     void setMatrices(int type); // 1 = Scene, 0 = Noise
+    void setTextures();
+    void setupQuadBuffers();
+    void setupUniforms();
 
     void setupFBO();
     void pass1();

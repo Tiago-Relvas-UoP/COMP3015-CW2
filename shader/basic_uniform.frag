@@ -33,7 +33,6 @@ uniform struct FogInfo
 {
 	float MaxDist;
 	float MinDist;
-	vec3 Color;
 }Fog;
 
 // Toon Shading Levels/ScaleFactor

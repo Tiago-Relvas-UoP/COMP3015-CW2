@@ -17,16 +17,16 @@ using std::endl;
 #include <glm/gtc/matrix_transform.hpp>
 #include <GLFW/glfw3.h>
 #include "helper/noisetex.h"
+#include "irrklang.h"
 
 using glm::vec3;
 using glm::vec4;
 using glm::mat3;
 using glm::mat4;
 
-float color[4] = { 0.1f, 0.1f, 0.1f, 1.0f }; // Background/Fog Color - Currently Dark Grey
-
 SceneBasic_Uniform::SceneBasic_Uniform() : 
-    tPrev(0), angle(90.0f), rotSpeed(glm::pi<float>()/0.7f), blurEnabled(true), timeSincePress(1.0f), skybox(100.0f)
+    tPrev(0), angle(90.0f), rotSpeed(glm::pi<float>()/0.7f), blurEnabled(true), timeSincePress(1.0f), skybox(100.0f),
+	soundEngine(irrklang::createIrrKlangDevice()), volume(0.2f)
 {
         mesh = ObjMesh::load("media/toilet/source/Toilet.obj", false, true);
 }
@@ -36,152 +36,16 @@ void SceneBasic_Uniform::initScene()
     // Compile shaders, Enable Depth & Set Background Color
     compile();
     glEnable(GL_DEPTH_TEST); 
-    glClearColor(color[0], color[1], color[2], color[3]);
 
     setupFBO();
-
-    // Array for full-screen quad
-    GLfloat verts[] = {
-        -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 1.0f, 1.0f, 0.0f,
-        -1.0f, -1.0f, 0.0f, 1.0f, 1.0f, 0.0f, -1.0f, 1.0f, 0.0f
-    };
-
-    GLfloat tc[] = {
-        0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-        0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f
-    };
-
-    // Full-screen quad for blur passes
-
-    // Set up the buffers
-    unsigned int handle[2];
-    glGenBuffers(2, handle);
-    glBindBuffer(GL_ARRAY_BUFFER, handle[0]);
-    glBufferData(GL_ARRAY_BUFFER, 6 * 3 * sizeof(float), verts, GL_STATIC_DRAW);
-    glBindBuffer(GL_ARRAY_BUFFER, handle[1]);
-    glBufferData(GL_ARRAY_BUFFER, 6 * 2 * sizeof(float), tc, GL_STATIC_DRAW);
-
-    // Setup the vertex array object
-    glGenVertexArrays(1, &fsQuad);
-    glBindVertexArray(fsQuad);
-
-    glBindBuffer(GL_ARRAY_BUFFER, handle[0]);
-    glVertexAttribPointer((GLuint)0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-    glEnableVertexAttribArray(0); // Vertex Position
-
-    glBindBuffer(GL_ARRAY_BUFFER, handle[1]);
-    glVertexAttribPointer((GLuint)2, 2, GL_FLOAT, GL_FALSE, 0, 0);
-    glEnableVertexAttribArray(2); // Texture Coordinates
-
-    glBindVertexArray(0);
-
-    // End of Full-screen quad for blur passes
-
-    // Full-screen quad for noise overlay
-    
-    // Set up the buffers
-    unsigned int noiseHandle[2];
-    glGenBuffers(2, noiseHandle);
-
-    glBindBuffer(GL_ARRAY_BUFFER, noiseHandle[0]);
-    glBufferData(GL_ARRAY_BUFFER, 6 * 3 * sizeof(float), verts, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ARRAY_BUFFER, noiseHandle[1]);
-    glBufferData(GL_ARRAY_BUFFER, 6 * 2 * sizeof(float), tc, GL_STATIC_DRAW);
-
-    // Set up the vertex array object
-    glGenVertexArrays(1, &noiseQuad);
-    glBindVertexArray(noiseQuad);
-
-    glBindBuffer(GL_ARRAY_BUFFER, noiseHandle[0]);
-    glVertexAttribPointer((GLuint)0, 3, GL_FLOAT, GL_FALSE, 0, ((GLubyte*)NULL + (0)));
-    glEnableVertexAttribArray(0); // Vertex position
-
-    glBindBuffer(GL_ARRAY_BUFFER, noiseHandle[1]);
-    glVertexAttribPointer((GLuint)2, 2, GL_FLOAT, GL_FALSE, 0, ((GLubyte*)NULL + (0)));
-    glEnableVertexAttribArray(2); // Texture coordinates
-
-    glBindVertexArray(0);
-
-    // End of Full-screen quad for noise overlay
-
-    // Multiple Lights 
-    float x, z;
-    for (int i = 0; i < 3; i++)
-    {
-        std::stringstream name;
-        name << "Light[" << i << "].Position";
-
-        x = 2.0f * cosf((glm::two_pi<float>() / 3) * i);
-        z = 2.0f * sinf((glm::two_pi<float>() / 3) * i);
-
-        prog.setUniform(name.str().c_str(), view * glm::vec4(x, 1.2f, z + 1.0f, 1.0f));
-
-    }
-
-    // * Light *
-    // Light Intensity
-    prog.setUniform("Light[0].L", vec3(1.0f, 1.0f, 1.0f));
-    prog.setUniform("Light[1].L", vec3(0.2f, 0.0f, 0.0f));
-    prog.setUniform("Light[2].L", vec3(0.0f, 0.0f, 0.5f));
-
-    // Light Ambient
-    prog.setUniform("Light[0].La", vec3(0.6f, 0.6f, 0.6f));
-    prog.setUniform("Light[1].La", vec3(0.05f, 0.0f, 0.0f));
-    prog.setUniform("Light[2].La", vec3(0.0f, 0.0f, 0.05f));
-
-    // Note to self: This took me hours to debug. Declare GLuint textures first before activating/binding them, otherwise there will be
-    // issues with textures either not loading, or overlapping. 
-
-    // * Textures *
-    GLuint baseTex = Texture::loadTexture("media/toilet/source/Toilet_BaseColor.png"); // BaseColor 
-    GLuint normalMap = Texture::loadTexture("media/toilet/source/Toilet_NormalOGL8.png"); // NormalMap Texture
-    GLuint noiseTex = NoiseTex::generate2DTex(6.0f);
-    GLuint cubeTex = Texture::loadHdrCubeMap("media/cube/pisa-hdr/pisa");
-    
-    // * Texture Units * 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, baseTex); // BaseColor 
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, normalMap); // NormalMap Texture
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, noiseTex); // Noise Texture
-    glActiveTexture(GL_TEXTURE4);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, cubeTex); // Skybox (Cube) Texture
-
-    // Fog Properties
-    prog.setUniform("Fog.MaxDist", 2.0f);
-    prog.setUniform("Fog.MinDist", 1.0f);
-    prog.setUniform("Fog.Color", vec3(color[0], color[1], color[2]));
-
-    float weights[5], sum, sigma2 = 8.0f;
-
-    // Compute and sum the weights
-    weights[0] = gauss(0, sigma2);
-    sum = weights[0];
-
-    // Normalize the weights and set the uniforms
-    for (int i = 1; i < 5; i++)
-    {
-        weights[i] = gauss(float(i), sigma2);
-        sum += 2 * weights[i];
-    }
-
-    // Normalize the weights and set the uniforms
-    for (int i = 0; i < 5; i++)
-    {
-        std::stringstream uniName;
-        uniName << "Weight[" << i << "]";
-
-        float val = weights[i] / sum;
-        prog.setUniform(uniName.str().c_str(), val);
-    }
-
-    noiseProg.use();
-    noiseProg.setUniform("NoiseTex", 3);
-    noiseProg.setUniform("GlobalAlpha", 0.2f);
+    setupQuadBuffers();
+    setupUniforms();
+    setTextures();
 
     prog.use();
+
+    soundEngine->play2D("media/music/polishtoiletost.wav", true);
+    soundEngine->setSoundVolume(volume);
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -226,6 +90,7 @@ void SceneBasic_Uniform::update( float t )
         if (angle > glm::two_pi<float>()) angle -= glm::two_pi<float>();
     }
 
+    // Enable/Disable Guassian Blur
     if (glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_Q) == GLFW_PRESS && timeSincePress > keyPressCD)
     {
         timeSincePress = 0.0f;
@@ -236,7 +101,6 @@ void SceneBasic_Uniform::update( float t )
 // Responsible for handling the scene rendering. Currently only calls drawScene() which renders toilet instances.
 void SceneBasic_Uniform::render()
 {
-
     if (blurEnabled)
     {
         pass1();
@@ -254,7 +118,6 @@ void SceneBasic_Uniform::render()
     }
 
     drawNoise();
-
 }
 
 void SceneBasic_Uniform::pass1()
@@ -322,15 +185,15 @@ void SceneBasic_Uniform::drawScene()
     view = glm::lookAt(vec3(0.5f, 0.75f, 0.75f), vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f));
     projection = glm::perspective(glm::radians(70.0f), (float)width / height, 0.3f, 100.0f);
 
+    // Skybox 
     skyboxProg.use();
     model = mat4(1.0f);
     setMatrices(2);
     skybox.render();
-    prog.use();
 
-    // Set material properties (Specular & Shininess)
-    prog.setUniform("Material.Ks", vec3(0.5f, 0.5f, 0.5f));
-    prog.setUniform("Material.Shininess", 300.0f);
+    // Toilet Meshes
+
+    prog.use();
 
     // Renders multiple instances of the toilet mesh, with each interation increasing the distance to test Fog Feature.
     float dist = 0.0f;
@@ -404,6 +267,161 @@ void SceneBasic_Uniform::setMatrices(int type)
             skyboxProg.setUniform("MVP", projection * mv);
             break;
     }
+}
+
+void SceneBasic_Uniform::setupUniforms()
+{
+    noiseProg.use();
+    noiseProg.setUniform("NoiseTex", 3);
+    noiseProg.setUniform("GlobalAlpha", 0.2f);
+
+    prog.use();
+
+    // Multiple Lights setup
+    float x, z;
+    for (int i = 0; i < 3; i++)
+    {
+        std::stringstream name;
+        name << "Light[" << i << "].Position";
+
+        x = 2.0f * cosf((glm::two_pi<float>() / 3) * i);
+        z = 2.0f * sinf((glm::two_pi<float>() / 3) * i);
+
+        prog.setUniform(name.str().c_str(), view * glm::vec4(x, 1.2f, z + 1.0f, 1.0f));
+
+    }
+
+    // Light Intensity
+    prog.setUniform("Light[0].L", vec3(1.0f, 1.0f, 1.0f));
+    prog.setUniform("Light[1].L", vec3(0.2f, 0.0f, 0.0f));
+    prog.setUniform("Light[2].L", vec3(0.0f, 0.0f, 0.5f));
+
+    // Light Ambient
+    prog.setUniform("Light[0].La", vec3(0.6f, 0.6f, 0.6f));
+    prog.setUniform("Light[1].La", vec3(0.05f, 0.0f, 0.0f));
+    prog.setUniform("Light[2].La", vec3(0.0f, 0.0f, 0.05f));
+
+    // Set material properties (Specular & Shininess)
+    prog.setUniform("Material.Ks", vec3(0.5f, 0.5f, 0.5f));
+    prog.setUniform("Material.Shininess", 300.0f);
+
+    // Fog Properties
+    prog.setUniform("Fog.MaxDist", 2.0f);
+    prog.setUniform("Fog.MinDist", 1.0f);
+
+	// Gaussian Blur Weights
+    float weights[5], sum, sigma2 = 1.0f;
+
+    // Compute and sum the weights
+    weights[0] = gauss(0, sigma2);
+    sum = weights[0];
+
+    // Normalize the weights and set the uniforms
+    for (int i = 1; i < 5; i++)
+    {
+        weights[i] = gauss(float(i), sigma2);
+        sum += 2 * weights[i];
+    }
+
+    // Normalize the weights and set the uniforms
+    for (int i = 0; i < 5; i++)
+    {
+        std::stringstream uniName;
+        uniName << "Weight[" << i << "]";
+
+        float val = weights[i] / sum;
+        prog.setUniform(uniName.str().c_str(), val);
+    }
+}
+
+void SceneBasic_Uniform::setTextures()
+{
+    // Note to self: This took me hours to debug. Declare GLuint textures first before activating/binding them, otherwise there will be
+    // issues with textures either not loading, or overlapping. 
+
+    // * Textures *
+    GLuint baseTex = Texture::loadTexture("media/toilet/source/Toilet_BaseColor.png"); // BaseColor 
+    GLuint normalMap = Texture::loadTexture("media/toilet/source/Toilet_NormalOGL8.png"); // NormalMap Texture
+    GLuint noiseTex = NoiseTex::generate2DTex(6.0f);
+    GLuint cubeTex = Texture::loadHdrCubeMap("media/skybox/stars-hdr/stars");
+
+    // * Texture Units * 
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, baseTex); // BaseColor 
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, normalMap); // NormalMap Texture
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, noiseTex); // Noise Texture
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubeTex); // Skybox (Cubemap) Texture
+}
+
+void SceneBasic_Uniform::setupQuadBuffers()
+{
+    // Array for full-screen quad
+    GLfloat verts[] = {
+        -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 1.0f, 1.0f, 0.0f,
+        -1.0f, -1.0f, 0.0f, 1.0f, 1.0f, 0.0f, -1.0f, 1.0f, 0.0f
+    };
+
+    GLfloat tc[] = {
+        0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+        0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f
+    };
+
+    // Full-screen quad for blur passes
+
+    // Set up the buffers
+    unsigned int handle[2];
+    glGenBuffers(2, handle);
+    glBindBuffer(GL_ARRAY_BUFFER, handle[0]);
+    glBufferData(GL_ARRAY_BUFFER, 6 * 3 * sizeof(float), verts, GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, handle[1]);
+    glBufferData(GL_ARRAY_BUFFER, 6 * 2 * sizeof(float), tc, GL_STATIC_DRAW);
+
+    // Setup the vertex array object
+    glGenVertexArrays(1, &fsQuad);
+    glBindVertexArray(fsQuad);
+
+    glBindBuffer(GL_ARRAY_BUFFER, handle[0]);
+    glVertexAttribPointer((GLuint)0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glEnableVertexAttribArray(0); // Vertex Position
+
+    glBindBuffer(GL_ARRAY_BUFFER, handle[1]);
+    glVertexAttribPointer((GLuint)2, 2, GL_FLOAT, GL_FALSE, 0, 0);
+    glEnableVertexAttribArray(2); // Texture Coordinates
+
+    glBindVertexArray(0);
+
+    // End of Full-screen quad for blur passes
+
+    // Full-screen quad for noise overlay
+
+    // Set up the buffers
+    unsigned int noiseHandle[2];
+    glGenBuffers(2, noiseHandle);
+
+    glBindBuffer(GL_ARRAY_BUFFER, noiseHandle[0]);
+    glBufferData(GL_ARRAY_BUFFER, 6 * 3 * sizeof(float), verts, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, noiseHandle[1]);
+    glBufferData(GL_ARRAY_BUFFER, 6 * 2 * sizeof(float), tc, GL_STATIC_DRAW);
+
+    // Set up the vertex array object
+    glGenVertexArrays(1, &noiseQuad);
+    glBindVertexArray(noiseQuad);
+
+    glBindBuffer(GL_ARRAY_BUFFER, noiseHandle[0]);
+    glVertexAttribPointer((GLuint)0, 3, GL_FLOAT, GL_FALSE, 0, ((GLubyte*)NULL + (0)));
+    glEnableVertexAttribArray(0); // Vertex position
+
+    glBindBuffer(GL_ARRAY_BUFFER, noiseHandle[1]);
+    glVertexAttribPointer((GLuint)2, 2, GL_FLOAT, GL_FALSE, 0, ((GLubyte*)NULL + (0)));
+    glEnableVertexAttribArray(2); // Texture coordinates
+
+    glBindVertexArray(0);
+
+    // End of Full-screen quad for noise overlay
 }
 
 void SceneBasic_Uniform::setupFBO()
