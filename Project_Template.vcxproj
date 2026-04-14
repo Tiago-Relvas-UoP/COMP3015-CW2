@@ -149,6 +149,7 @@
     <ClCompile Include="helper\glslprogram.cpp" />
     <ClCompile Include="helper\glutils.cpp" />
     <ClCompile Include="helper\grid.cpp" />
+    <ClCompile Include="helper\noisetex.cpp" />
     <ClCompile Include="helper\objmesh.cpp" />
     <ClCompile Include="helper\plane.cpp" />
     <ClCompile Include="helper\skybox.cpp" />
@@ -163,6 +164,8 @@
   <ItemGroup>
     <None Include="shader\basic_uniform.frag" />
     <None Include="shader\basic_uniform.vert" />
+    <None Include="shader\noise.frag" />
+    <None Include="shader\noise.vert" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="helper\aabb.h" />
@@ -170,6 +173,7 @@
     <ClInclude Include="helper\glslprogram.h" />
     <ClInclude Include="helper\glutils.h" />
     <ClInclude Include="helper\grid.h" />
+    <ClInclude Include="helper\noisetex.h" />
     <ClInclude Include="helper\objmesh.h" />
     <ClInclude Include="helper\particleutils.h" />
     <ClInclude Include="helper\plane.h" />

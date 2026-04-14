@@ -16,6 +16,7 @@ using std::endl;
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <GLFW/glfw3.h>
+#include "helper/noisetex.h"
 
 using glm::vec3;
 using glm::vec4;
@@ -50,6 +51,8 @@ void SceneBasic_Uniform::initScene()
         0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f
     };
 
+    // Full-screen quad for blur passes
+
     // Set up the buffers
     unsigned int handle[2];
     glGenBuffers(2, handle);
@@ -71,6 +74,36 @@ void SceneBasic_Uniform::initScene()
     glEnableVertexAttribArray(2); // Texture Coordinates
 
     glBindVertexArray(0);
+
+    // End of Full-screen quad for blur passes
+
+    // Full-screen quad for noise overlay
+    
+    // Set up the buffers
+    unsigned int noiseHandle[2];
+    glGenBuffers(2, noiseHandle);
+
+    glBindBuffer(GL_ARRAY_BUFFER, noiseHandle[0]);
+    glBufferData(GL_ARRAY_BUFFER, 6 * 3 * sizeof(float), verts, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, noiseHandle[1]);
+    glBufferData(GL_ARRAY_BUFFER, 6 * 2 * sizeof(float), tc, GL_STATIC_DRAW);
+
+    // Set up the vertex array object
+    glGenVertexArrays(1, &noiseQuad);
+    glBindVertexArray(noiseQuad);
+
+    glBindBuffer(GL_ARRAY_BUFFER, noiseHandle[0]);
+    glVertexAttribPointer((GLuint)0, 3, GL_FLOAT, GL_FALSE, 0, ((GLubyte*)NULL + (0)));
+    glEnableVertexAttribArray(0); // Vertex position
+
+    glBindBuffer(GL_ARRAY_BUFFER, noiseHandle[1]);
+    glVertexAttribPointer((GLuint)2, 2, GL_FLOAT, GL_FALSE, 0, ((GLubyte*)NULL + (0)));
+    glEnableVertexAttribArray(2); // Texture coordinates
+
+    glBindVertexArray(0);
+
+    // End of Full-screen quad for noise overlay
 
     // Multiple Lights 
     float x, z;
@@ -97,22 +130,28 @@ void SceneBasic_Uniform::initScene()
     prog.setUniform("Light[1].La", vec3(0.05f, 0.0f, 0.0f));
     prog.setUniform("Light[2].La", vec3(0.0f, 0.0f, 0.05f));
 
+    // Note to self: This took me hours to debug. Declare GLuint textures first before activating/binding them, otherwise there will be
+    // issues with textures either not loading, or overlapping. 
+
     // * Textures *
     GLuint baseTex = Texture::loadTexture("media/toilet/source/Toilet_BaseColor.png"); // BaseColor 
     GLuint normalMap = Texture::loadTexture("media/toilet/source/Toilet_NormalOGL8.png"); // NormalMap Texture
+    GLuint noiseTex = NoiseTex::generate2DTex(6.0f);
 
     // * Texture Units * 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, baseTex); // BaseColor 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, normalMap); // NormalMap Texture
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, noiseTex);
 
     // Fog Properties
     prog.setUniform("Fog.MaxDist", 2.0f);
     prog.setUniform("Fog.MinDist", 1.0f);
     prog.setUniform("Fog.Color", vec3(color[0], color[1], color[2]));
 
-    float weights[5], sum, sigma2 = 2.0f;
+    float weights[5], sum, sigma2 = 8.0f;
 
     // Compute and sum the weights
     weights[0] = gauss(0, sigma2);
@@ -134,6 +173,15 @@ void SceneBasic_Uniform::initScene()
         float val = weights[i] / sum;
         prog.setUniform(uniName.str().c_str(), val);
     }
+
+    noiseProg.use();
+    noiseProg.setUniform("NoiseTex", 3);
+    noiseProg.setUniform("GlobalAlpha", 0.4f);
+
+    prog.use();
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 // Compiles the vertex and fragment shaders, and then links it to the program for use.
@@ -143,7 +191,11 @@ void SceneBasic_Uniform::compile()
 		prog.compileShader("shader/basic_uniform.vert");
 		prog.compileShader("shader/basic_uniform.frag");
 		prog.link();
-		prog.use();       
+		prog.use();     
+
+        noiseProg.compileShader("shader/noise.vert");
+        noiseProg.compileShader("shader/noise.frag");
+        noiseProg.link();
 	} catch (GLSLProgramException &e) { // Catches any exceptions/errors, and then displays message on console for debug
 		cerr << e.what() << endl;
 		exit(EXIT_FAILURE);
@@ -177,6 +229,7 @@ void SceneBasic_Uniform::update( float t )
 // Responsible for handling the scene rendering. Currently only calls drawScene() which renders toilet instances.
 void SceneBasic_Uniform::render()
 {
+
     if (blurEnabled)
     {
         pass1();
@@ -185,16 +238,21 @@ void SceneBasic_Uniform::render()
     }
     else
     {
+        prog.use();
         prog.setUniform("Pass", 1);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glEnable(GL_DEPTH_TEST);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         drawScene();
     }
+
+    drawNoise();
+
 }
 
 void SceneBasic_Uniform::pass1()
 {
+    prog.use();
     prog.setUniform("Pass", 1);
     glBindFramebuffer(GL_FRAMEBUFFER, renderFBO);
     glEnable(GL_DEPTH_TEST);
@@ -204,6 +262,8 @@ void SceneBasic_Uniform::pass1()
 
 void SceneBasic_Uniform::pass2()
 {
+    prog.use();
+
     // Set Uniform for second pass
     prog.setUniform("Pass", 2);
     glBindFramebuffer(GL_FRAMEBUFFER, intermediateFBO);
@@ -217,7 +277,7 @@ void SceneBasic_Uniform::pass2()
     model = mat4(1.0f);
     view = mat4(1.0f);
     projection = mat4(1.0f);
-    setMatrices();
+    setMatrices(1);
 
     // Render the full-screen quad;
     glBindVertexArray(fsQuad);
@@ -226,6 +286,8 @@ void SceneBasic_Uniform::pass2()
 
 void SceneBasic_Uniform::pass3()
 {
+    prog.use();
+
     // Set Uniform for second pass
     prog.setUniform("Pass", 3);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -237,7 +299,7 @@ void SceneBasic_Uniform::pass3()
     model = mat4(1.0f);
     view = mat4(1.0f);
     projection = mat4(1.0f);
-    setMatrices();
+    setMatrices(1);
 
     // Render the full-screen quad;
     glBindVertexArray(fsQuad);
@@ -265,10 +327,29 @@ void SceneBasic_Uniform::drawScene()
         model = glm::translate(model, vec3(0.0f, 0.0f, -dist));
         model = glm::rotate(model, angle, vec3(0.0f, 1.0f, 0.0f));
         model = scale(model, vec3(0.005f, 0.005f, 0.005f));
-        setMatrices();
+        setMatrices(1);
         mesh->render();
         dist += 0.7f;
     }
+}
+
+void SceneBasic_Uniform::drawNoise()
+{
+    noiseProg.use();
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDisable(GL_DEPTH_TEST);
+
+    model = mat4(1.0f);
+	view = mat4(1.0f);
+    projection = mat4(1.0f);
+    setMatrices(0);
+
+    glBindVertexArray(noiseQuad);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    glEnable(GL_DEPTH_TEST);
+    prog.use();
 }
 
 float SceneBasic_Uniform::gauss(float x, float sigma2)
@@ -288,13 +369,19 @@ void SceneBasic_Uniform::resize(int w, int h)
     projection = glm::perspective(glm::radians(70.0f), (float)w / h, 0.3f, 100.0f);
 }
 
-void SceneBasic_Uniform::setMatrices()
+void SceneBasic_Uniform::setMatrices(int type)
 {
     mat4 mv = view * model;
 
-    prog.setUniform("ModelViewMatrix", mv);
-    prog.setUniform("NormalMatrix", glm::mat3(vec3(mv[0]), vec3(mv[1]), vec3(mv[2])));
-    prog.setUniform("MVP", projection * mv);
+    if (type == 1)
+    {
+        prog.setUniform("ModelViewMatrix", mv);
+        prog.setUniform("NormalMatrix", glm::mat3(vec3(mv[0]), vec3(mv[1]), vec3(mv[2])));
+        prog.setUniform("MVP", projection * mv);
+    } else if (type == 0)
+    {
+        noiseProg.setUniform("MVP", projection * mv);
+	}
 }
 
 void SceneBasic_Uniform::setupFBO()
@@ -327,6 +414,7 @@ void SceneBasic_Uniform::setupFBO()
     GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0 };
     glDrawBuffers(1, drawBuffers);
 
+    // For debugging 
     /*GLenum result = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (result == GL_FRAMEBUFFER_COMPLETE)
     {

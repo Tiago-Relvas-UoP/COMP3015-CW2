@@ -18,10 +18,14 @@ class SceneBasic_Uniform : public Scene
 {
 private:
     GLSLProgram prog;
+    GLSLProgram noiseProg;
 
     GLuint fsQuad;
     GLuint renderFBO, intermediateFBO;
     GLuint renderTex, intermediateTex;
+
+    GLuint noiseQuad;
+    GLuint noiseTex;
 
     std::unique_ptr<ObjMesh> mesh;
     float tPrev, angle, rotSpeed;
@@ -29,14 +33,15 @@ private:
 	float timeSincePress;
 
     void compile();
-    void setMatrices();
+    void setMatrices(int type); // 1 = Scene, 0 = Noise
 
     void setupFBO();
     void pass1();
     void pass2();
     void pass3();
 
-    void drawScene();
+    void drawScene(); // Normal Scene
+    void drawNoise(); // Noise
     float gauss(float, float);
 
 public:

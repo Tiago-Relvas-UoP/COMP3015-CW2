@@ -69,12 +69,21 @@
     <ClCompile Include="helper\grid.cpp">
       <Filter>helper</Filter>
     </ClCompile>
+    <ClCompile Include="helper\noisetex.cpp">
+      <Filter>helper</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="shader\basic_uniform.frag">
       <Filter>shaders</Filter>
     </None>
     <None Include="shader\basic_uniform.vert">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shader\noise.frag">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shader\noise.vert">
       <Filter>shaders</Filter>
     </None>
   </ItemGroup>
@@ -137,6 +146,9 @@
       <Filter>helper</Filter>
     </ClInclude>
     <ClInclude Include="helper\grid.h">
+      <Filter>helper</Filter>
+    </ClInclude>
+    <ClInclude Include="helper\noisetex.h">
       <Filter>helper</Filter>
     </ClInclude>
   </ItemGroup>
