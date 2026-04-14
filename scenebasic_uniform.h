@@ -19,6 +19,7 @@ class SceneBasic_Uniform : public Scene
 private:
     GLSLProgram prog;
     GLSLProgram noiseProg;
+    GLSLProgram skyboxProg;
 
     GLuint fsQuad;
     GLuint renderFBO, intermediateFBO;
@@ -26,6 +27,8 @@ private:
 
     GLuint noiseQuad;
     GLuint noiseTex;
+
+    SkyBox skybox;
 
     std::unique_ptr<ObjMesh> mesh;
     float tPrev, angle, rotSpeed;

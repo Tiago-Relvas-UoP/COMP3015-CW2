@@ -26,7 +26,7 @@ using glm::mat4;
 float color[4] = { 0.1f, 0.1f, 0.1f, 1.0f }; // Background/Fog Color - Currently Dark Grey
 
 SceneBasic_Uniform::SceneBasic_Uniform() : 
-    tPrev(0), angle(90.0f), rotSpeed(glm::pi<float>()/0.7f), blurEnabled(true), timeSincePress(1.0f)
+    tPrev(0), angle(90.0f), rotSpeed(glm::pi<float>()/0.7f), blurEnabled(true), timeSincePress(1.0f), skybox(100.0f)
 {
         mesh = ObjMesh::load("media/toilet/source/Toilet.obj", false, true);
 }
@@ -137,14 +137,17 @@ void SceneBasic_Uniform::initScene()
     GLuint baseTex = Texture::loadTexture("media/toilet/source/Toilet_BaseColor.png"); // BaseColor 
     GLuint normalMap = Texture::loadTexture("media/toilet/source/Toilet_NormalOGL8.png"); // NormalMap Texture
     GLuint noiseTex = NoiseTex::generate2DTex(6.0f);
-
+    GLuint cubeTex = Texture::loadHdrCubeMap("media/cube/pisa-hdr/pisa");
+    
     // * Texture Units * 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, baseTex); // BaseColor 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, normalMap); // NormalMap Texture
     glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, noiseTex);
+    glBindTexture(GL_TEXTURE_2D, noiseTex); // Noise Texture
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubeTex); // Skybox (Cube) Texture
 
     // Fog Properties
     prog.setUniform("Fog.MaxDist", 2.0f);
@@ -176,7 +179,7 @@ void SceneBasic_Uniform::initScene()
 
     noiseProg.use();
     noiseProg.setUniform("NoiseTex", 3);
-    noiseProg.setUniform("GlobalAlpha", 0.0f);
+    noiseProg.setUniform("GlobalAlpha", 0.2f);
 
     prog.use();
 
@@ -196,6 +199,10 @@ void SceneBasic_Uniform::compile()
         noiseProg.compileShader("shader/noise.vert");
         noiseProg.compileShader("shader/noise.frag");
         noiseProg.link();
+
+        skyboxProg.compileShader("shader/skybox.vert");
+        skyboxProg.compileShader("shader/skybox.frag");
+        skyboxProg.link();
 	} catch (GLSLProgramException &e) { // Catches any exceptions/errors, and then displays message on console for debug
 		cerr << e.what() << endl;
 		exit(EXIT_FAILURE);
@@ -313,7 +320,13 @@ void SceneBasic_Uniform::drawScene()
 
     // Camera view
     view = glm::lookAt(vec3(0.5f, 0.75f, 0.75f), vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f));
-    projection = glm::perspective(glm::radians(60.0f), (float)width / height, 0.3f, 100.0f);
+    projection = glm::perspective(glm::radians(70.0f), (float)width / height, 0.3f, 100.0f);
+
+    skyboxProg.use();
+    model = mat4(1.0f);
+    setMatrices(2);
+    skybox.render();
+    prog.use();
 
     // Set material properties (Specular & Shininess)
     prog.setUniform("Material.Ks", vec3(0.5f, 0.5f, 0.5f));
@@ -373,15 +386,24 @@ void SceneBasic_Uniform::setMatrices(int type)
 {
     mat4 mv = view * model;
 
-    if (type == 1)
+    switch (type) 
     {
-        prog.setUniform("ModelViewMatrix", mv);
-        prog.setUniform("NormalMatrix", glm::mat3(vec3(mv[0]), vec3(mv[1]), vec3(mv[2])));
-        prog.setUniform("MVP", projection * mv);
-    } else if (type == 0)
-    {
-        noiseProg.setUniform("MVP", projection * mv);
-	}
+        case 0:
+            noiseProg.setUniform("MVP", projection * mv);
+            break;
+
+        case 1:
+            prog.setUniform("ModelViewMatrix", mv);
+            prog.setUniform("NormalMatrix", glm::mat3(vec3(mv[0]), vec3(mv[1]), vec3(mv[2])));
+            prog.setUniform("MVP", projection * mv);
+            break;
+
+        case 2:
+            skyboxProg.setUniform("ModelViewMatrix", mv);
+            skyboxProg.setUniform("NormalMatrix", glm::mat3(vec3(mv[0]), vec3(mv[1]), vec3(mv[2])));
+            skyboxProg.setUniform("MVP", projection * mv);
+            break;
+    }
 }
 
 void SceneBasic_Uniform::setupFBO()

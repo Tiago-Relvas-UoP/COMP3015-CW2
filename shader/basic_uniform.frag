@@ -8,6 +8,7 @@ in vec3 Position;
 layout (binding = 0) uniform sampler2D baseTex;
 layout (binding = 1) uniform sampler2D normalMap;
 layout (binding = 2) uniform sampler2D Texture0;
+layout (binding = 4) uniform samplerCube skyBoxTex; 
 
 layout (location = 0) out vec4 FragColor;
 
@@ -70,6 +71,10 @@ vec4 pass1()
 	vec3 norm = texture(normalMap, TexCoord).xyz;
 	norm.xy = 2.0 * norm.xy - 1.0;
 
+	// Skybox Color (Fog Blending)
+	//vec3 skyboxColor = texture(skyBoxTex, normalize(-Position)).rgb;
+	//skyboxColor = pow(skyboxColor, vec3(1.0/2.2)); // Gamma
+
 	// Fog calculation
 	float dist = abs(Position.z);
 	float fogFactor=(Fog.MaxDist - dist)/(Fog.MaxDist - Fog.MinDist);
@@ -83,10 +88,10 @@ vec4 pass1()
 	}
 
 	// Final Mix
-	vec3 color = mix(Fog.Color, shadeColor, fogFactor);
+	//vec3 color = mix(skyboxColor, shadeColor, fogFactor);
 
 	// Final output
-	return vec4(color, 1.0);
+	return vec4(shadeColor, fogFactor);
 }
 
 vec4 pass2()
