@@ -48,7 +48,7 @@ void main()
 		LightDir[i] = toObjectLocal * (Light[i].Position.xyz - pos);
 	}
 
-	// Convered to tangent using Matrix
+	// Convered to tangent-space using Matrix
 	ViewDir = toObjectLocal * normalize(-pos);
 	TexCoord=VertexTexCoord;
 
