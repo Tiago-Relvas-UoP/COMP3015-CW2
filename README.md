@@ -515,7 +515,7 @@ void SceneBasic_Uniform::pass1()
 }
 ```
 
-- pass2(): Draws the Horizontal Blur by using `intermediateFBO` as the framebuffer, and `renderTex` as the input Texture. Similiar to drawNoise, it also disables depth testing since this is a mere 2D Post-processing effect over the main scene. Before drawing, fsQuad is assigned to the VAO, so the output renders to the full-screen quad.
+- pass2(): Draws the Vertical Blur Blur by using `intermediateFBO` as the framebuffer, and `renderTex` as the input Texture. Similiar to drawNoise, it also disables depth testing since this is a mere 2D Post-processing effect over the main scene. Before drawing, fsQuad is assigned to the VAO, so the output renders to the full-screen quad.
 
 ```cpp
 // Pass 2: Render full-screen quad using intermediateFBO as framebuffer, and renderTex as input texture for horizontal blur.
@@ -547,7 +547,7 @@ void SceneBasic_Uniform::pass2()
 }
 ```
 
-- pass3(): Draws the Vertical Blur. Similiar to pass2(), however the default framebuffer is used, and `intermediateTex` is used as the input texture.
+- pass3(): Draws the Horizontal Blur. Similiar to pass2(), however the default framebuffer is used, and `intermediateTex` is used as the input texture.
 
 ```cpp
 // Render full-screen quad using default framebuffer, and intermediateTex as input texture for vertical blur.
@@ -644,7 +644,6 @@ vec3 blinnPhong(int light, vec3 n)
 
 	float sDotN = max(dot(s, n), 0.0);
 	diffuse = texColor * floor(sDotN * levels) * scaleFactor ; // Diffuse with Toon Shading.
-	// diffuse = texColor * sDotN ; // Diffuse without Toon Shading
 
 	if (sDotN > 0.0)
 	{
@@ -654,6 +653,87 @@ vec3 blinnPhong(int light, vec3 n)
 	}
 
 	return ambient + (diffuse + spec) * Light[light].L; // Final mix: Combines Ambient, Diffuse and Specular
+}
+```
+
+This shader has three different passes, which change the FragColor output depending on the set pass uniform.
+
+```glsl
+// Main Method. Depending on current pass uniform value, the corresponding method function is called.
+void main() 
+{
+	if (Pass == 1) FragColor = pass1();
+	else if (Pass == 2) FragColor = pass2();
+	else if (Pass == 3) FragColor = pass3();
+}
+```
+
+- Pass 1 does multiple things: It Applies the normal mapping to the texture coordinates of the toilet mesh, giving the illusion of depth; It calculates the Fog Factors based the absolute value of the camera position (in Eye-space), and then clamping the Fog Factor parameter (which is based on this Camera Position, The maximum distance and minimum distance of fog clipping parameters), so it's minimum and maximum value is between 0 and 1 for a given mesh, and finally it calculates the shading for each Light Source.
+
+```glsl
+// Pass 1: Main Scene using Normal Mapping, Fog Factor, and Blinn-Phong.
+vec4 pass1()
+{
+	// Normal Mapping
+	vec3 norm = texture(normalMap, TexCoord).xyz;
+	norm.xy = 2.0 * norm.xy - 1.0;
+
+	// Fog calculation
+	float dist = abs(Position.z);
+	float fogFactor=(Fog.MaxDist - dist)/(Fog.MaxDist - Fog.MinDist);
+	fogFactor = clamp(fogFactor, 0.0, 1.0);
+	
+	// Shading for each light source
+	vec3 shadeColor = vec3(0.0);
+	for (int i = 0; i < 3; i++)
+	{
+		shadeColor += blinnPhong(i, normalize(norm));
+	}
+
+	// Final output
+	return vec4(shadeColor, fogFactor);
+}
+```
+
+- Pass 2 and 3 apply a vertical and horizontal blur pass to the image, respectively. This is achieved by looking at a row/collumn of neighbour pixels, and multiplying each neighbours color by a weight value.
+
+```glsl
+// Pass 2: Vertical Gaussian Blur 
+vec4 pass2()
+{
+	ivec2 pix = ivec2(gl_FragCoord.xy); // We grab a pixel to check if Edge
+
+	vec4 sum = texelFetch(Texture0, pix, 0) * Weight[0];
+
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(0, 1)) * Weight[1];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(0, -1)) * Weight[1];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(0, 2)) * Weight[2];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(0, -2)) * Weight[2];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(0, 3)) * Weight[3];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(0, -3)) * Weight[3];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(0, 4)) * Weight[4];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(0, -4)) * Weight[4];
+
+	return sum;
+}
+
+// Pass 3: Horizontal Gaussian Blur
+vec4 pass3()
+{
+	ivec2 pix = ivec2(gl_FragCoord.xy); // We grab a pixel to check if Edge
+
+	vec4 sum = texelFetch(Texture0, pix, 0) * Weight[0];
+
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(1, 0)) * Weight[1];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(-1, 0)) * Weight[1];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(2, 0)) * Weight[2];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(-2, 0)) * Weight[2];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(3, 0)) * Weight[3];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(-3, 0)) * Weight[3];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(4, 0)) * Weight[4];
+	sum += texelFetchOffset(Texture0, pix, 0, ivec2(-4, 0)) * Weight[4];
+
+	return sum;
 }
 ```
 
@@ -797,11 +877,4 @@ void main()
 	gl_Position = MVP * vec4(VertexPosition, 1.0);
 }
 ```
-
-
-
-
-
-
-
 
