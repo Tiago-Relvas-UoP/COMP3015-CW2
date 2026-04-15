@@ -317,6 +317,19 @@ void SceneBasic_Uniform::setupUniforms()
 }
 ```
 
+#### gauss()
+This method is what computes the weight for the Gauss Blur, which is called inside setupUniforms(). Output is based on a given X Offset, and Sigma2 Variance.
+
+```cpp
+// Responsible for computing Guassian Blur Weights for given offset x and variance sigma2.
+float SceneBasic_Uniform::gauss(float x, float sigma2)
+{
+    double coeff = 1.0 / (glm::two_pi<double>() * sigma2);
+    double expon = -(x * x) / (2.0 * sigma2);
+    return (float)(coeff * exp(expon));
+}
+```
+
 #### setTextures()
 Responsible for defining each Textures location within the project directory, and assigning each to a different texture unit:
 
@@ -412,5 +425,152 @@ void SceneBasic_Uniform::render()
 ```
 
 #### Draw Scene()
+Responsible for drawing the main scene. It starts off by clearing the Color and Depth buffers, and applying the appropriate camera view and projection. Before drawing a particular element, the shader matrices are set using setMatrices() and definying a shader type (Discussed after this segment). The first thing that is drawn in the scene is the Skybox, with the model being reset back to 1.0f to ensure no irregular rendering. Afterwards, multiple Toilet Mesh instances are generating using a For Loop, with each interation increasing the render distance in order to test the fog factor, using `translate`. To handle rotation, `rotation` is declared using angle as a variable, and since Update() continously increments this value, then each render ensures a different rotation value for the toilet meshes.
 
+```
+// Draw the main 3D Scene (Skybox + Toilet Meshes).
+void SceneBasic_Uniform::drawScene()
+{
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    // Camera setup
+    view = glm::lookAt(vec3(0.5f, 0.75f, 0.75f), vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f));
+    projection = glm::perspective(glm::radians(70.0f), (float)width / height, 0.3f, 100.0f);
+
+    // Draw Skybox
+    skyboxProg.use();
+    model = mat4(1.0f);
+    setMatrices(2);
+    skybox.render();
+
+    // Switch to main shader program
+    prog.use();
+
+    // Draw Toilet Meshes
+    // Renders multiple instances of the toilet mesh, with each interation increasing the distance to test Fog Feature.
+    float dist = 0.0f;
+    for (int i = 0; i < 8; i++)
+    {
+        model = mat4(1.0f);
+        model = glm::translate(model, vec3(0.0f, 0.0f, -dist));
+        model = glm::rotate(model, angle, vec3(0.0f, 1.0f, 0.0f));
+        model = scale(model, vec3(0.005f, 0.005f, 0.005f)); 
+        setMatrices(1);
+        mesh->render();
+        dist += 0.7f; // Increases distance for next interation to showcase Fog Effect.
+    }
+}
+```
+
+#### drawNoise()
+Called last, and responsible for drawing the noise onto the scene. Before rendering the Noise, Depth Testing is disabled since noise acts as 2D Overlay Effect. Matrices are reset calling setMatrices(), and afterwards `noiseQuad` is assigned as the main VAO before drawing the scene. On end, it re-enables depth testing and switchs back to the main shader program (prog).
+
+```cpp
+// Draw procedural noise overlay as full-screen quad (noiseQuad)
+void SceneBasic_Uniform::drawNoise()
+{
+    // Switch to noise shader program
+    noiseProg.use();
+
+	// Switch to default framebuffer, and disable depth testing since noise is a 2D overlay effect.
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDisable(GL_DEPTH_TEST);
+
+    // Reset M.V.P., and set matrices.
+    model = mat4(1.0f);
+	view = mat4(1.0f);
+    projection = mat4(1.0f);
+    setMatrices(0);
+
+    // // Render the full-screen quad using noiseQuad, and re-enable depth testing.
+    glBindVertexArray(noiseQuad);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glEnable(GL_DEPTH_TEST);
+
+    // Switch back to main shader program
+    prog.use();
+}
+```
+
+#### Blur Passes (pass1(), pass2() and pass3())
+When Gauss Blur is enabled, the scene rendering goes through three different passes 
+
+- pass1(): Calls drawScene() using the `renderFBO` framebuffer rather than the default.
+  
+```cpp
+// Pass 1: Render scene using renderFBO as framebuffer.
+void SceneBasic_Uniform::pass1()
+{
+    // Switch to main shader program
+    prog.use();
+
+    // Configure shader
+    prog.setUniform("Pass", 1);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderFBO); // renderFBO framebuffer.
+    glEnable(GL_DEPTH_TEST);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    drawScene(); // Draw main scene
+}
+```
+
+- pass2(): Draws the Horizontal Blur by using `intermediateFBO` as the framebuffer, and `renderTex` as the input Texture. Similiar to drawNoise, it also disables depth testing since this is a mere 2D Post-processing effect over the main scene. Before drawing, fsQuad is assigned to the VAO, so the output renders to the full-screen quad.
+
+```cpp
+// Pass 2: Render full-screen quad using intermediateFBO as framebuffer, and renderTex as input texture for horizontal blur.
+void SceneBasic_Uniform::pass2()
+{
+    // Switch to main shader program
+    prog.use();
+
+    // Configure shader, and bind renderTex as input texture
+    prog.setUniform("Pass", 2);
+    glBindFramebuffer(GL_FRAMEBUFFER, intermediateFBO);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, renderTex);
+
+    // Disable Depth Testing, since blur is a 2D Post-Processing Effect, and clear color buffer.
+    glDisable(GL_DEPTH_TEST);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+	// Reset M.V.P., and set matrices.
+    model = mat4(1.0f);
+    view = mat4(1.0f);
+    projection = mat4(1.0f);
+    setMatrices(1);
+
+    // Render the full-screen quad;
+    glBindVertexArray(fsQuad);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+	glBindVertexArray(0);
+}
+```
+
+- pass3(): Draws the Vertical Blur. Similiar to pass2(), however the default framebuffer is used, and `intermediateTex` is used as the input texture.
+
+```cpp
+// Render full-screen quad using default framebuffer, and intermediateTex as input texture for vertical blur.
+void SceneBasic_Uniform::pass3()
+{
+    // Switch to main shader program
+    prog.use();
+
+    // Configure shader, and bind intermediateTex as input texture
+    prog.setUniform("Pass", 3);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, intermediateTex);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // Reset M.V.P., and set matrices.
+    model = mat4(1.0f);
+    view = mat4(1.0f);
+    projection = mat4(1.0f);
+    setMatrices(1);
+
+    // Render the full-screen quad;
+    glBindVertexArray(fsQuad);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+}
+```
