@@ -16,7 +16,7 @@ Note: This is an extension of CW1, which can be found here [PUT LINK HERE]
 - Toggleable Gaussian Blur
 - 2D Procedurally-Generated Noise that overlays the scene.
 
-### Program navigation (How everything ties together)
+# Program navigation (How everything ties together)
 
 ## Scenebasic_uniform.h
 Defines and stores all essential resources/parameters to be used in the program. This includes all GLSL (Shader) programs, GLUINTs, Animation/Effect Parameters, Scene Resources and Helper methods.
@@ -84,7 +84,7 @@ void SceneBasic_Uniform::compile()
 ```
 
 #### setupFBO()
-This method creates the framebuffers and textures to be used for Gaussian Blur passes, used during Render(). [NOTE TO SELF: EXPAND LATER]
+This method is responsible for initializing the framebugger objects and associated textures to be used for Guassian Blur. This allows it to be rendered offscreen by doing it on a separate texture so it's not directly applied to the screen, so this post-processing technique is applied based on image-data.
 
 ```cpp
 // Creates framebuffers and textures that are used for multi-pass rendering for the Gaussian Blur, when enabled. (Provided from the labs)
@@ -162,7 +162,8 @@ void SceneBasic_Uniform::setupFBO()
 ```
 
 ### setupQuadBuffers()
-[NOTE TO SELF: WRITE EXPLANATION HERE LATER]
+This method is responsible for initializing the Vertex Buffer Objects (VBOs) and Vertex Array Objects (VAO) required to render full-screen quads, which are used for overlay effects (fsQuad handles Gauss Blur, and noiseQuad handles noise). Verts define the coordinates for two triangles that conver the entire screen (ranges from -1.0 to 1.0, whilst tc defines the texture coordinates (ranges from 0.0 to 1.0).
+
 ```cpp
 // Responsible for setting up the VBO and VAO for full-screen quads (Used for Gaussian Blur, and Noise Overlay).
 void SceneBasic_Uniform::setupQuadBuffers()
@@ -574,3 +575,233 @@ void SceneBasic_Uniform::pass3()
     glBindVertexArray(0);
 }
 ```
+
+# Vertex and Fragment Shaders
+
+## Main Shaders
+
+### basic_uniform.frag
+
+The fragment shader is called to handle everything related to the Toilet Meshes, including Light Shading (Blinn-Phong and afterwards Toon Shading), Blur weights, Fog and texture units.. Multiple parameters are set, which are transmitted form the `Scenebasic_uniform.cpp` file using the setupUniforms() methods, and structs are used to set-up related uniforms (Example Light takes both Intensity and Ambient).
+
+```glsl
+in vec3 LightDir[3];
+in vec3 ViewDir;
+in vec2 TexCoord;
+in vec3 Position;
+
+layout (binding = 0) uniform sampler2D baseTex;
+layout (binding = 1) uniform sampler2D normalMap;
+layout (binding = 2) uniform sampler2D Texture0;
+layout (binding = 4) uniform samplerCube skyBoxTex; 
+
+layout (location = 0) out vec4 FragColor;
+
+uniform float EdgeThreshold;
+uniform int Pass;
+uniform float Weight[5];
+
+uniform struct LightInfo
+{
+	vec4 Position; // Light position in eye coords.
+	vec3 La; // Ambient light intensity
+	vec3 L; // Diffuse and specular light intensity
+} Light[3];
+
+uniform struct MaterialInfo
+{
+	vec3 Ks; // Specular Reflectivity
+	float Shininess; // Specular Shininess factor
+} Material;
+
+uniform struct FogInfo
+{
+	float MaxDist;
+	float MinDist;
+}Fog;
+
+// Toon Shading Levels/ScaleFactor
+const int levels = 3;
+const float scaleFactor = 1.0/levels;
+```
+
+### Blinn-Phong Light Shading (vec3 blinnPhong)
+
+Blinn-Phong Light is the main model used in this Shader, taking as input the surface normal and light number. Blinn-Phong uses Ambient, Diffuse and Specular Lighting, each determined mostly based on the mesh Base Color, apart from Ambience which takes in a custom value uniform (Light.La), and Diffuse which is modified by the Toon Shading parameters. The normalized direction (s) is calculated using the LightDir variable (inputted from Vertex Shader), and then sDotN determines how the light impacts the current surface normal. If the surface is facing light, determined by sDotN > 0, then the specular component is determined by how aligned the surface normal is with the Blinn Half-vector, which is computed based on View Vector (v) in Tangent Space, and the Light Direction (s) normalized. The output is a mix of the Ambient, Diffuse and Specular compoennts multiplied by the intensity of the current light.
+
+```cpp
+// Blinn-Phong Light Model
+vec3 blinnPhong(int light, vec3 n)
+{
+	// Texture
+	vec3 texColor = texture(baseTex, TexCoord).rgb;
+
+	vec3 diffuse = vec3(0), spec = vec3(0); 
+
+	vec3 ambient = Light[light].La * texColor;  // Ambient
+
+	vec3 s = normalize(LightDir[light]); // Light Direction
+
+	float sDotN = max(dot(s, n), 0.0);
+	diffuse = texColor * floor(sDotN * levels) * scaleFactor ; // Diffuse with Toon Shading.
+	// diffuse = texColor * sDotN ; // Diffuse without Toon Shading
+
+	if (sDotN > 0.0)
+	{
+		vec3 v = normalize(ViewDir); // View Vector in Tangent-space
+		vec3 h = normalize(v+s); // Blinn Half-vector
+		spec = Material.Ks * pow(max(dot(h, n), 0.0), Material.Shininess); // Specular
+	}
+
+	return ambient + (diffuse + spec) * Light[light].L; // Final mix: Combines Ambient, Diffuse and Specular
+}
+```
+
+### basic_uniform.vert
+The vertex shaders whole purpose is to transform the Light Direction and View Vectors from eye-space (relative to camera) to tangent-space (relative to surface), to be used for Normal Mapping. First it transforms the normal and tangent into eye space, and computes the binormal using the former. To allow the conversion from eye-space to tangent-space, a TBN (Tangent, Binormal and Normal) matrix is used that acts a coordinate system for the surface normal to use. Then, using this new matrix, each Light Position is converted to Tangent Space aswell as the View Direction. `pos` is used to store the camera-position in eye-space, which is used for Fog Calculation.
+
+```glsl
+void main()
+{
+	// Transform normal and tangent to eye space
+	vec3 norm = normalize(NormalMatrix * VertexNormal);
+	vec3 tang = normalize(NormalMatrix * vec3(VertexTangent));
+
+	// Compute the binormal
+	vec3 binormal = normalize(cross(norm, tang)) * VertexTangent.w;
+
+	// Matrix for transformation to tangent space
+	mat3 toObjectLocal = mat3(
+		tang.x, binormal.x, norm.x,
+		tang.y, binormal.y, norm.y,
+		tang.z, binormal.z, norm.z
+	);
+
+	// Vertex position in Eye Space rather than tangent
+	vec3 pos = vec3(ModelViewMatrix * vec4(VertexPosition, 1.0)).xyz;
+	Position = pos; // For Fog
+
+	// Conversion of each light position from eye to tangent space
+	for (int i = 0; i < 3; i++)
+	{
+		LightDir[i] = toObjectLocal * (Light[i].Position.xyz - pos);
+	}
+
+	// Convered to tangent using Matrix
+	ViewDir = toObjectLocal * normalize(-pos);
+	TexCoord=VertexTexCoord;
+
+	// Final output
+	gl_Position = MVP * vec4(VertexPosition, 1.0);
+}
+```
+
+## Noise Shaders
+
+### noise.frag
+The fragment shader for the noise program samples the noise based on a mix of two colors (SkyColor and CloudColor). To ensure a smooth transition between these two, `t` outputs a value between 0 and 1 by getting the cosin of the noises alpha channel and PI value (always returns either -1 or 1), then adding 1 on top of that and dividing by 2. The FragColor output is based on this mix, and the GlobalAlpha (which determines transparency).
+
+```glsl
+#version 460
+
+#define PI 3.14159265
+
+in vec2 TexCoord;
+layout (location = 0) out vec4 FragColor;
+
+uniform vec4 Color;
+uniform sampler2D NoiseTex;
+
+uniform vec4 SkyColor = vec4(0.3, 0.3, 0.9, 1.0);
+uniform vec4 CloudColor = vec4(1.0, 1.0, 1.0, 1.0);
+
+// Noise Alpha (Controls Transparency of Noise Overlay)
+uniform float GlobalAlpha = 1.0;
+
+void main() 
+{
+	// Sample noise
+	vec4 noise = texture(NoiseTex, TexCoord);
+	float t = (cos( noise.a * PI ) + 1.0) / 2.0;
+	vec4 color = mix (SkyColor, CloudColor, t);
+
+	// Output 
+	FragColor = vec4( color.rgb, GlobalAlpha);
+}
+```
+
+### noise.vert
+The vertex shader for the noise program is simple, as all it does is pass the texture coordinates onto the fragment shader.
+
+```glsl
+#version 460
+
+layout (location = 0) in vec3 VertexPosition;
+layout (location = 2) in vec2 VertexTexCoord;
+
+out vec2 TexCoord;
+
+uniform mat4 MVP;
+
+void main()
+{
+    TexCoord = VertexTexCoord;
+
+    // Output
+    gl_Position = MVP * vec4(VertexPosition, 1.0);
+}
+```
+
+## Skybox Shaders
+
+### skybox.frag
+The fragment shader for the skybox samples the hdr cubemap in eye-space, and afterwards applies Gamma Correction before the final output
+
+```glsl
+#version 460
+
+in vec3 Vec;
+
+layout (binding = 4) uniform samplerCube skyBoxTex; 
+layout (location = 0) out vec4 FragColor;
+
+void main() 
+{
+	// Sample cubemap using eye-space direction
+	vec3 texColor=texture(skyBoxTex, normalize(-Vec)).rgb;
+	texColor=pow(texColor, vec3(1.0/2.2)); // Gamma Correction
+
+	// Output 
+	FragColor = vec4(texColor, 1.0);
+}
+```
+
+### skybox.vert
+Similiar to the noise.vert shader file, it's also quite simple. All it does is pass the computed eye-space vector onto the fragment shader to be applied to the texture.
+
+```glsl
+#version 460
+
+layout (location = 0) in vec3 VertexPosition;
+	
+out vec3 Vec;
+uniform mat4 MVP;
+uniform mat4 ModelViewMatrix;
+
+void main()
+{
+	// Compute eye-space vector for cubemap sampling
+	Vec = (ModelViewMatrix * vec4(VertexPosition, 0.0)).xyz;
+
+	// Output
+	gl_Position = MVP * vec4(VertexPosition, 1.0);
+}
+```
+
+
+
+
+
+
+
+
