@@ -149,7 +149,7 @@ void SceneBasic_Uniform::pass1()
     drawScene(); // Draw main scene
 }
 
-// Pass 2: Render full-screen quad using intermediateFBO as framebuffer, and renderTex as input texture for horizontal blur.
+// Pass 2: Render full-screen quad using intermediateFBO as framebuffer, and renderTex as input texture for vertical blur.
 void SceneBasic_Uniform::pass2()
 {
     // Switch to main shader program
@@ -177,7 +177,7 @@ void SceneBasic_Uniform::pass2()
 	glBindVertexArray(0);
 }
 
-// Render full-screen quad using default framebuffer, and intermediateTex as input texture for vertical blur.
+// Render full-screen quad using default framebuffer, and intermediateTex as input texture for horizontal blur.
 void SceneBasic_Uniform::pass3()
 {
     // Switch to main shader program
