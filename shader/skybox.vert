@@ -8,7 +8,9 @@ uniform mat4 ModelViewMatrix;
 
 void main()
 {
+	// Compute view-space vector for cubemap sampling
 	Vec = (ModelViewMatrix * vec4(VertexPosition, 0.0)).xyz;
 
+	// Output
 	gl_Position = MVP * vec4(VertexPosition, 1.0);
 }

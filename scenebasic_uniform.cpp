@@ -13,10 +13,10 @@ using std::endl;
 
 #include "helper/glutils.h"
 #include "helper/texture.h"
+#include "helper/noisetex.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <GLFW/glfw3.h>
-#include "helper/noisetex.h"
 #include "irrklang.h"
 
 using glm::vec3;
@@ -24,29 +24,37 @@ using glm::vec4;
 using glm::mat3;
 using glm::mat4;
 
+// Constructor: Initializes all member parameters, and loads toilet mesh from file
 SceneBasic_Uniform::SceneBasic_Uniform() : 
     tPrev(0), angle(90.0f), rotSpeed(glm::pi<float>()/0.7f), blurEnabled(true), timeSincePress(1.0f), skybox(100.0f),
-	soundEngine(irrklang::createIrrKlangDevice()), volume(0.2f)
+	fsQuad(0), renderFBO(0), intermediateFBO(0), renderTex(0), intermediateTex(0), noiseQuad(0), noiseTex(0),
+    soundEngine(irrklang::createIrrKlangDevice()), volume(0.2f)
 {
+        // Toilet Mesh 
         mesh = ObjMesh::load("media/toilet/source/Toilet.obj", false, true);
 }
 
+// Responsible for initializing the scene: Compiles all shaders, sets multiple resources (FBO, Textures, Uniforms), and starts background music.
 void SceneBasic_Uniform::initScene()
 {
-    // Compile shaders, Enable Depth & Set Background Color
+    // Compile shaders.
     compile();
-    glEnable(GL_DEPTH_TEST); 
+    glEnable(GL_DEPTH_TEST); // Enable Depth
 
+    // Set up resources (FBO, Quad Buffers, Uniforms, Textures)
     setupFBO();
     setupQuadBuffers();
     setupUniforms();
     setTextures();
 
+    // Switch to main shader program
     prog.use();
 
+    // Start background music (In 2D), with looping enabled and volume defined by its respective parameter
     soundEngine->play2D("media/music/polishtoiletost.wav", true);
     soundEngine->setSoundVolume(volume);
 
+    // Enable Alpha Blending for Overlay (Applies to Noise Texture, so it renders on top of scene)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
@@ -76,74 +84,88 @@ void SceneBasic_Uniform::compile()
 void SceneBasic_Uniform::update( float t )
 {
     float deltaT = t - tPrev; // Delta Time (Current time - Previous time)
-    float keyPressCD = 0.3f;
-    timeSincePress += deltaT;
+    float keyPressCD = 0.3f; // Cooldown for Key Press
+    timeSincePress += deltaT; // Increment times since key press each frame.
 
     if (tPrev == 0.0f) deltaT = 0.0f;
 
     tPrev = t;
-    angle += 0.1f * deltaT; // Update angle rotation based on delta time
+    angle += 0.1f * deltaT; // Update angle rotation based on delta time 
 
+    // Apply main rotation speed to angle WHEN animation is enabled
     if (this->m_animate) 
     {
         angle += rotSpeed * deltaT;
         if (angle > glm::two_pi<float>()) angle -= glm::two_pi<float>();
     }
 
-    // Enable/Disable Guassian Blur
+    // Toggle Guassian Blur with Key Press (Q).
     if (glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_Q) == GLFW_PRESS && timeSincePress > keyPressCD)
     {
-        timeSincePress = 0.0f;
-        blurEnabled = !blurEnabled;
+        timeSincePress = 0.0f; // Reset time since press to 0, so the cooldown starts.
+        blurEnabled = !blurEnabled; // inverts BlurEnabled bool value.
     }
 }
 
-// Responsible for handling the scene rendering. Currently only calls drawScene() which renders toilet instances.
+// Responsible for handling the scene rendering.
 void SceneBasic_Uniform::render()
 {
+    // If Blur is enabled, render scene as normal then do multiple blur-passes.
     if (blurEnabled)
     {
-        pass1();
-        pass2();
-        pass3();
+        pass1(); // Render main scene to texture (renderTex) using renderFBO.
+		pass2(); // Horizontal blur pass to intermediate texture (intermediateTex) using intermediateFBO.
+		pass3(); // Vertical blur pass to default framebuffer, using intermediateTex as input.
     }
-    else
+    else // If blur is disabled, only render the main scene using default framebuffer.
     {
+        // Switch to main shader program
         prog.use();
+
+        // Configure shader
         prog.setUniform("Pass", 1);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0); // Default Framebuffer
         glEnable(GL_DEPTH_TEST);
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        drawScene();
+        drawScene(); // Draw main scene
     }
 
-    drawNoise();
+    drawNoise(); // Draw procedural generated noise as overlay on top of scene.
 }
 
+// Pass 1: Render scene using renderFBO as framebuffer.
 void SceneBasic_Uniform::pass1()
 {
+    // Switch to main shader program
     prog.use();
+
+    // Configure shader
     prog.setUniform("Pass", 1);
-    glBindFramebuffer(GL_FRAMEBUFFER, renderFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderFBO); // renderFBO framebuffer.
     glEnable(GL_DEPTH_TEST);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    drawScene();
+
+    drawScene(); // Draw main scene
 }
 
+// Pass 2: Render full-screen quad using intermediateFBO as framebuffer, and renderTex as input texture for horizontal blur.
 void SceneBasic_Uniform::pass2()
 {
+    // Switch to main shader program
     prog.use();
 
-    // Set Uniform for second pass
+    // Configure shader, and bind renderTex as input texture
     prog.setUniform("Pass", 2);
     glBindFramebuffer(GL_FRAMEBUFFER, intermediateFBO);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, renderTex);
 
+    // Disable Depth Testing, since blur is a 2D Post-Processing Effect, and clear color buffer.
     glDisable(GL_DEPTH_TEST);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // Set up the matrices
+	// Reset M.V.P., and set matrices.
     model = mat4(1.0f);
     view = mat4(1.0f);
     projection = mat4(1.0f);
@@ -152,20 +174,23 @@ void SceneBasic_Uniform::pass2()
     // Render the full-screen quad;
     glBindVertexArray(fsQuad);
     glDrawArrays(GL_TRIANGLES, 0, 6);
+	glBindVertexArray(0);
 }
 
+// Render full-screen quad using default framebuffer, and intermediateTex as input texture for vertical blur.
 void SceneBasic_Uniform::pass3()
 {
+    // Switch to main shader program
     prog.use();
 
-    // Set Uniform for second pass
+    // Configure shader, and bind intermediateTex as input texture
     prog.setUniform("Pass", 3);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, intermediateTex);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // Set up the matrices
+    // Reset M.V.P., and set matrices.
     model = mat4(1.0f);
     view = mat4(1.0f);
     projection = mat4(1.0f);
@@ -174,27 +199,28 @@ void SceneBasic_Uniform::pass3()
     // Render the full-screen quad;
     glBindVertexArray(fsQuad);
     glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
 }
 
-// Has all parameters and function calls to render main meshes onto scene (Toilet)
+// Draw the main 3D Scene (Skybox + Toilet Meshes).
 void SceneBasic_Uniform::drawScene()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Camera view
+    // Camera setup
     view = glm::lookAt(vec3(0.5f, 0.75f, 0.75f), vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f));
     projection = glm::perspective(glm::radians(70.0f), (float)width / height, 0.3f, 100.0f);
 
-    // Skybox 
+    // Draw Skybox
     skyboxProg.use();
     model = mat4(1.0f);
     setMatrices(2);
     skybox.render();
 
-    // Toilet Meshes
-
+    // Switch to main shader program
     prog.use();
 
+    // Draw Toilet Meshes
     // Renders multiple instances of the toilet mesh, with each interation increasing the distance to test Fog Feature.
     float dist = 0.0f;
     for (int i = 0; i < 8; i++)
@@ -202,32 +228,39 @@ void SceneBasic_Uniform::drawScene()
         model = mat4(1.0f);
         model = glm::translate(model, vec3(0.0f, 0.0f, -dist));
         model = glm::rotate(model, angle, vec3(0.0f, 1.0f, 0.0f));
-        model = scale(model, vec3(0.005f, 0.005f, 0.005f));
+        model = scale(model, vec3(0.005f, 0.005f, 0.005f)); 
         setMatrices(1);
         mesh->render();
-        dist += 0.7f;
+        dist += 0.7f; // Increases distance for next interation to showcase Fog Effect.
     }
 }
 
+// Draw procedural noise overlay as full-screen quad (noiseQuad)
 void SceneBasic_Uniform::drawNoise()
 {
+    // Switch to noise shader program
     noiseProg.use();
 
+	// Switch to default framebuffer, and disable depth testing since noise is a 2D overlay effect.
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDisable(GL_DEPTH_TEST);
 
+    // Reset M.V.P., and set matrices.
     model = mat4(1.0f);
 	view = mat4(1.0f);
     projection = mat4(1.0f);
     setMatrices(0);
 
+    // // Render the full-screen quad using noiseQuad, and re-enable depth testing.
     glBindVertexArray(noiseQuad);
     glDrawArrays(GL_TRIANGLES, 0, 6);
-
     glEnable(GL_DEPTH_TEST);
+
+    // Switch back to main shader program
     prog.use();
 }
 
+// Responsible for computing Guassian Blur Weights for given offset x and variance sigma2.
 float SceneBasic_Uniform::gauss(float x, float sigma2)
 {
     double coeff = 1.0 / (glm::two_pi<double>() * sigma2);
@@ -235,6 +268,7 @@ float SceneBasic_Uniform::gauss(float x, float sigma2)
     return (float)(coeff * exp(expon));
 }
 
+// Responsible for handling window resize. Updates viewport, and projection.
 void SceneBasic_Uniform::resize(int w, int h)
 {
     glViewport(0, 0, w, h);
@@ -245,22 +279,27 @@ void SceneBasic_Uniform::resize(int w, int h)
     projection = glm::perspective(glm::radians(70.0f), (float)w / h, 0.3f, 100.0f);
 }
 
+// Set shader matrices on a set GLSL program, based on the set "type" parameter (0 = Noise, 1 = Main, 2 = Skybox).
 void SceneBasic_Uniform::setMatrices(int type)
 {
+    // Set Model-View Matrix parameter.
     mat4 mv = view * model;
 
     switch (type) 
     {
+        // Noise Shader: Only expects MVP matrix.
         case 0:
             noiseProg.setUniform("MVP", projection * mv);
             break;
 
+		// Main Shader: Expects ModelViewMatrix, NormalMatrix, and MVP.
         case 1:
             prog.setUniform("ModelViewMatrix", mv);
             prog.setUniform("NormalMatrix", glm::mat3(vec3(mv[0]), vec3(mv[1]), vec3(mv[2])));
             prog.setUniform("MVP", projection * mv);
             break;
 
+        // Skybox Shader: Expects ModelViewMatrix, NormalMatrix, and MVP.
         case 2:
             skyboxProg.setUniform("ModelViewMatrix", mv);
             skyboxProg.setUniform("NormalMatrix", glm::mat3(vec3(mv[0]), vec3(mv[1]), vec3(mv[2])));
@@ -269,15 +308,18 @@ void SceneBasic_Uniform::setMatrices(int type)
     }
 }
 
+// Responsible for setting up all shader uniforms, for all shader programs (Includes properties for Lights, Fog, Material, Gaussian Blur Weights, and Noise Overlay).
 void SceneBasic_Uniform::setupUniforms()
 {
-    noiseProg.use();
-    noiseProg.setUniform("NoiseTex", 3);
-    noiseProg.setUniform("GlobalAlpha", 0.2f);
+    // ** Noise Uniforms **
+    noiseProg.use(); // Switch to noise shader program
+    noiseProg.setUniform("NoiseTex", 3); // Texture assigning (Unit 3)
+    noiseProg.setUniform("GlobalAlpha", 0.2f); // Alpha value for noise overlay (transparency)
 
+    // Switch to main shader program
     prog.use();
 
-    // Multiple Lights setup
+    // Set-up for Multiple Blinn-Phong Lights
     float x, z;
     for (int i = 0; i < 3; i++)
     {
@@ -291,6 +333,8 @@ void SceneBasic_Uniform::setupUniforms()
 
     }
 
+    // ** Main Shader Uniforms **
+    
     // Light Intensity
     prog.setUniform("Light[0].L", vec3(1.0f, 1.0f, 1.0f));
     prog.setUniform("Light[1].L", vec3(0.2f, 0.0f, 0.0f));
@@ -301,13 +345,15 @@ void SceneBasic_Uniform::setupUniforms()
     prog.setUniform("Light[1].La", vec3(0.05f, 0.0f, 0.0f));
     prog.setUniform("Light[2].La", vec3(0.0f, 0.0f, 0.05f));
 
-    // Set material properties (Specular & Shininess)
+    // Material Properties
     prog.setUniform("Material.Ks", vec3(0.5f, 0.5f, 0.5f));
     prog.setUniform("Material.Shininess", 300.0f);
 
     // Fog Properties
     prog.setUniform("Fog.MaxDist", 2.0f);
     prog.setUniform("Fog.MinDist", 1.0f);
+
+    // ** Gaussian Blur **
 
 	// Gaussian Blur Weights
     float weights[5], sum, sigma2 = 1.0f;
@@ -334,28 +380,27 @@ void SceneBasic_Uniform::setupUniforms()
     }
 }
 
+// Loads all Textures, and binds them to their respective texture units
 void SceneBasic_Uniform::setTextures()
 {
-    // Note to self: This took me hours to debug. Declare GLuint textures first before activating/binding them, otherwise there will be
-    // issues with textures either not loading, or overlapping. 
-
     // * Textures *
-    GLuint baseTex = Texture::loadTexture("media/toilet/source/Toilet_BaseColor.png"); // BaseColor 
-    GLuint normalMap = Texture::loadTexture("media/toilet/source/Toilet_NormalOGL8.png"); // NormalMap Texture
-    GLuint noiseTex = NoiseTex::generate2DTex(6.0f);
-    GLuint cubeTex = Texture::loadHdrCubeMap("media/skybox/stars-hdr/stars");
+    GLuint baseTex = Texture::loadTexture("media/toilet/source/Toilet_BaseColor.png"); // Base Color (Toilet)
+    GLuint normalMap = Texture::loadTexture("media/toilet/source/Toilet_NormalOGL8.png"); // Normal Map (Toilet)
+    GLuint noiseTex = NoiseTex::generate2DTex(6.0f); // Procedural Noise
+    GLuint cubeTex = Texture::loadHdrCubeMap("media/skybox/stars-hdr/stars"); // HDR Cubemap (Skybox)
 
     // * Texture Units * 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, baseTex); // BaseColor 
+    glBindTexture(GL_TEXTURE_2D, baseTex); // Base Color (Unit 0)
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, normalMap); // NormalMap Texture
+    glBindTexture(GL_TEXTURE_2D, normalMap); // Normal Map (Unit 1)
     glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, noiseTex); // Noise Texture
+    glBindTexture(GL_TEXTURE_2D, noiseTex); // Procedural Noise (Unit 3)
     glActiveTexture(GL_TEXTURE4);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, cubeTex); // Skybox (Cubemap) Texture
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubeTex); // HDR Cubemap (Unit 4)
 }
 
+// Responsible for setting up the VBO and VAO for full-screen quads (Used for Gaussian Blur, and Noise Overlay).
 void SceneBasic_Uniform::setupQuadBuffers()
 {
     // Array for full-screen quad
@@ -424,8 +469,13 @@ void SceneBasic_Uniform::setupQuadBuffers()
     // End of Full-screen quad for noise overlay
 }
 
+// Creates framebuffers and textures that are used for multi-pass rendering for the Gaussian Blur, when enabled. (Provided from the labs)
 void SceneBasic_Uniform::setupFBO()
 {
+    // *********************
+    // ***** RenderFBO ***** 
+    // *********************
+
     // Generate and bind the framebuffer
     glGenFramebuffers(1, &renderFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, renderFBO);

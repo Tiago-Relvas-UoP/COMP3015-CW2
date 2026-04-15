@@ -39,6 +39,7 @@ uniform struct FogInfo
 const int levels = 3;
 const float scaleFactor = 1.0/levels;
 
+// Blinn-Phong Light Model
 vec3 blinnPhong(int light, vec3 n)
 {
 	// Texture
@@ -52,7 +53,7 @@ vec3 blinnPhong(int light, vec3 n)
 
 	float sDotN = max(dot(s, n), 0.0);
 	diffuse = texColor * floor(sDotN * levels) * scaleFactor ; // Diffuse with Toon Shading.
-	// diffuse = texColor * sDotN ; // Diffuse (Normal)
+	// diffuse = texColor * sDotN ; // Diffuse without Toon Shading
 
 	if (sDotN > 0.0)
 	{
@@ -64,15 +65,12 @@ vec3 blinnPhong(int light, vec3 n)
 	return ambient + (diffuse + spec) * Light[light].L; // Final mix: Combines Ambient, Diffuse and Specular
 }
 
+// Pass 1: Main Scene using Normal Mapping, Fog Factor, and Blinn-Phong.
 vec4 pass1()
 {
 	// Normal Mapping
 	vec3 norm = texture(normalMap, TexCoord).xyz;
 	norm.xy = 2.0 * norm.xy - 1.0;
-
-	// Skybox Color (Fog Blending)
-	//vec3 skyboxColor = texture(skyBoxTex, normalize(-Position)).rgb;
-	//skyboxColor = pow(skyboxColor, vec3(1.0/2.2)); // Gamma
 
 	// Fog calculation
 	float dist = abs(Position.z);
@@ -86,13 +84,11 @@ vec4 pass1()
 		shadeColor += blinnPhong(i, normalize(norm));
 	}
 
-	// Final Mix
-	//vec3 color = mix(skyboxColor, shadeColor, fogFactor);
-
 	// Final output
 	return vec4(shadeColor, fogFactor);
 }
 
+// Pass 2: Vertical Gaussian Blur 
 vec4 pass2()
 {
 	ivec2 pix = ivec2(gl_FragCoord.xy); // We grab a pixel to check if Edge
@@ -111,6 +107,7 @@ vec4 pass2()
 	return sum;
 }
 
+// Pass 3: Horizontal Gaussian Blur
 vec4 pass3()
 {
 	ivec2 pix = ivec2(gl_FragCoord.xy); // We grab a pixel to check if Edge
@@ -129,36 +126,10 @@ vec4 pass3()
 	return sum;
 }
 
+// Main Method. Depending on current pass uniform value, the corresponding method function is called.
 void main() 
 {
 	if (Pass == 1) FragColor = pass1();
 	else if (Pass == 2) FragColor = pass2();
 	else if (Pass == 3) FragColor = pass3();
 }
-
-
-/* OLD MAIN
-void main() 
-{
-	// Normal Mapping
-	vec3 norm = texture(normalMap, TexCoord).xyz;
-	norm.xy = 2.0 * norm.xy - 1.0;
-
-	// Fog calculation
-	float dist = abs(Position.z);
-	float fogFactor=(Fog.MaxDist - dist)/(Fog.MaxDist - Fog.MinDist);
-	fogFactor = clamp(fogFactor, 0.0, 1.0);
-	
-	// Shading for each light source
-	vec3 shadeColor = vec3(0.0);
-	for (int i = 0; i < 3; i++)
-	{
-		shadeColor += blinnPhong(i, normalize(norm));
-	}
-
-	// Final Mix
-	vec3 color = mix(Fog.Color, shadeColor, fogFactor);
-
-	// Final output
-    FragColor = vec4(color, 1.0);
-}*/

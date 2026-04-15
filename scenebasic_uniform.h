@@ -2,36 +2,37 @@
 #define SCENEBASIC_UNIFORM_H
 
 #include "helper/scene.h"
-
-#include <glad/glad.h>
+#include "helper/objmesh.h"
+#include "helper/skybox.h"
 #include "helper/glslprogram.h"
 
+#include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-
-#include "helper/plane.h"
-#include "helper/objmesh.h"
-
-#include "helper/skybox.h";
 #include "irrklang.h"
 
 class SceneBasic_Uniform : public Scene
 {
 private:
-    GLSLProgram prog;
-    GLSLProgram noiseProg;
-    GLSLProgram skyboxProg;
+    // GLSL programs
+    GLSLProgram prog; // Main 
+    GLSLProgram noiseProg; // Noise 
+    GLSLProgram skyboxProg; // Skybox
 
+    // Full-screen quad + FBO/Texture resources for Guassian Blur
     GLuint fsQuad;
     GLuint renderFBO, intermediateFBO;
     GLuint renderTex, intermediateTex;
 
+    // Noise Overlay Quad + Texture for procedural noise
     GLuint noiseQuad;
     GLuint noiseTex;
 
+    // Scene resources
     SkyBox skybox;
-
     std::unique_ptr<ObjMesh> mesh;
+
+    // Animation and Effect Parameters
     float tPrev, angle, rotSpeed;
     bool blurEnabled; 
 	float timeSincePress;
@@ -40,17 +41,20 @@ private:
     irrklang::ISoundEngine* soundEngine;
     float volume;
 
+    // Main method helpers
     void compile();
-    void setMatrices(int type); // 1 = Scene, 0 = Noise
+    void setMatrices(int type); 
     void setTextures();
     void setupQuadBuffers();
     void setupUniforms();
 
+    // FBO / Pass helpers for Gaussian Blur
     void setupFBO();
     void pass1();
     void pass2();
     void pass3();
 
+    // Render helpers
     void drawScene(); // Normal Scene
     void drawNoise(); // Noise
     float gauss(float, float);
