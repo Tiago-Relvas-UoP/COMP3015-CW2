@@ -1,8 +1,8 @@
 # COMP3015-CW2: Polish Toilets In Space
-Note: This is an extension of CW1, which can be found here [PUT LINK HERE]
+Note: This is an extension of CW1, which can be found [here](https://github.com/Tiago-Relvas-UoP/COMP3015-CW1/tree/main)
 
 ## YOUTUBE VIDEO
-[LINK TO YOUTUBE VIDEO HERE]
+The youtube video, showcasing the project, can be found [here](https://youtu.be/JGnGIBx2xK8)
 
 ## PROJECT DESCRIPTION
 "Polish Toilets in Space" is a 3D Scene consisting of a few toilets spinning in space.
@@ -15,6 +15,40 @@ Note: This is an extension of CW1, which can be found here [PUT LINK HERE]
 - Skybox using a HDR Cube Map
 - Toggleable Gaussian Blur
 - 2D Procedurally-Generated Noise that overlays the scene.
+
+### SPECIFICATION/DEPENDENCIES
+- IDE used: Visual Studio Community 2022
+- OS: Windows 11
+- Dependencies
+	- The following libraries are used: GLAD, GLFW, GLM, KHR, irrKlang and some files from learnopengl.com (stb_image.cpp, stb_image.h, stb_image_write.h, mesh.h, model.h, shader.h, shader_m.h).
+- Configuration Properties
+	- VC++ Directories
+		-Include Directories: C:\Users\Public\OpenGL\include
+		- Library Directories: C:\Users\Public\OpenGL\lib
+	- Linker
+		- Input
+		- Additional Dependencies: glfw3.lib & opengl32.lib
+ 
+### HOW-TO RUN
+- From source code:
+	- Download Visual Studio Community 2022 & all required libraries not included in the project directory (Consult "Configuration property". These must be in the specified directories aswell)
+	- Download source code .zip
+ 	- Extract .zip contents to separate folder
+  	- run .sln file
+  	- In the upper section, choose appropriate Debugger settings (x64/x86 and Debug/Release).
+  	- Click "Local Windows Debugger" to run the scene.
+  	  
+- From executable:
+	- Download executable from release section in this repository
+	- Extract .zip contents into a separate folder
+ 	- Click the ".exe" file to run the scene. 
+
+## What makes this Shader Program Special? (+ Inspirations)
+This program is heavily inspired by a random video I stumbled upon on youtube consiting of a Glowing Toilet thats indefinitely spinning whilst a Polish music plays in the background. With this discovery, I decided to attempt to replicate the feeling given by that video but with my own original touches, using certain techniques to improve the scene (Such as addition of a Skybox, noise and Toon Shading).
+
+Source material:
+- [Spinning Toilet Video](https://youtu.be/s0Vsfc3C35U?si=dxjRUz7hcequReph)
+- [Polish Music](https://www.youtube.com/watch?v=3VizXab7XE0) (Po twojej pysznej zupie - Kamil)
 
 # Program navigation (How everything ties together)
 
