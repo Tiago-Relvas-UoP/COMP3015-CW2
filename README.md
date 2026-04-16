@@ -1,5 +1,5 @@
 # COMP3015-CW2: Polish Toilets In Space
-Note: This is an extension of CW1, which can be found [here](https://github.com/Tiago-Relvas-UoP/COMP3015-CW1/tree/main)
+Note: This is an extension of CW1. It's repository (which includes the older program version) can be found [here](https://github.com/Tiago-Relvas-UoP/COMP3015-CW1/tree/main)
 
 ## YOUTUBE VIDEO
 The youtube video, showcasing the project, can be found [here](https://youtu.be/JGnGIBx2xK8)
