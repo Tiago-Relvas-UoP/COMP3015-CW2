@@ -912,3 +912,7 @@ void main()
 }
 ```
 
+## ASSETS USED
+Background Music: https://www.youtube.com/watch?v=3VizXab7XE0
+Skybox: Provided by [HDRi Space Spheremaps](https://www.spacespheremaps.com/)
+Toilet Model: https://sketchfab.com/3d-models/toilet-132a8ee2af3a40d39d270fbed3d3666c
