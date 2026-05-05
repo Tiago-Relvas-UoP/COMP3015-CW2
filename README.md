@@ -13,7 +13,7 @@ The youtube video, showcasing the project, can be found [here](https://youtu.be/
 - Applied Toon Shading modifier to the diffuse component of B.P. Shading
 - Fog Factor.
 - Skybox using a HDR Cube Map
-- Toggleable Gaussian Blur (Press Q to Toggle On/Off)
+- Toggleable Gaussian Blur (!!! Press Q to Toggle On/Off !!!)
 - 2D Procedurally-Generated Noise that overlays the scene.
 
 ### SPECIFICATION/DEPENDENCIES
